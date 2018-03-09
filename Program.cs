@@ -8,132 +8,135 @@ using System.Net.Sockets;
 using ProtoBuf;
 using ChitChat.Events;
 
-namespace Test_Client1
+namespace csharp_server
 {
-    class Client
+    class Server
     {
-        void PrintUserInfo(UserInfo user, Login userLogin)
+
+        void PrintUserInfo(UserInfo user)
         {
             Console.WriteLine($"Name: {user.Name}");
             Console.WriteLine($"ID: {user.ID}");
             Console.WriteLine($"Password: {user.Password}");
             Console.WriteLine($"Event Type: {user.Type.ToString()}");
-
-            Console.WriteLine($"User: {userLogin.Username}");
-            Console.WriteLine($"User: {userLogin.Password}");
         }
 
-       void PrintMessageToClient(SendMessage m)
+        public void StartServer()
         {
-            Console.WriteLine($"Recieved Message: {m.Message}");
-        }
+            Console.WriteLine("Starting server....");
 
-        public void StartClient()
-        {
-            Console.WriteLine("Starting Client....");
+            TcpListener listener = null;
 
-            UserInfo user = new UserInfo
-            {
-                Name = "Jeremy",
-                ID = 33690,
-                PhoneNumber = "111-111-1111",
-                Password = "Password",
-                Type = EventType.USER_INFO,
-            };
-
-            Login userLogin = new Login
-            {
-                Username = "xkrunchy",
-                Password = "Mastersword!!64",
-                Type = EventType.LOGIN,
-            };
-
-
-            Console.WriteLine("Create new user with info: \n");
-            PrintUserInfo(user, userLogin);
-
-            TcpClient _client = null;
-            NetworkStream stream;
-            
             try
             {
+                IPAddress localIP = IPAddress.Any;
+                int port = 27015;
 
-                _client = new TcpClient("144.37.220.39", 27015);
+                listener = new TcpListener(localIP, port);
 
-                stream = _client.GetStream();
-
-                string answer;
-                string newMessageToBeSent;
+                listener.Start();
 
                 BaseEvent incomingEvent = new BaseEvent
                 {
                     Type = EventType.NONE
                 };
 
+                int count = 0;
+                //testing 2 clients
+                TcpClient newClient1 = null;
+                TcpClient newClient2 = null;
+                List<TcpClient> listConnectedClients = new List<TcpClient>();
+
+           
+                while (count < 2)
+                {
+                    Console.WriteLine("Waiting for connection....\n");
+
+                     newClient1 = listener.AcceptTcpClient();
+                    newClient2 = listener.AcceptTcpClient();
+
+                     Console.WriteLine("Accepted a connection! \n");
+
+  
+                }
+
                 while (true)
-                {                    
-                    //Sending a new message code below
-                    Console.WriteLine("Do you want to send a message? yes/no?");
-                    answer = Console.ReadLine();
-                    if (answer == "yes")
-                    {
-                        Console.WriteLine("Enter message to be sent: ");
-                        newMessageToBeSent = Console.ReadLine();
-                        SendMessage message = new SendMessage
-                        {
-                            Message = newMessageToBeSent,
-                            Type = EventType.SEND_MESSAGE
-                        };
-
-
-                        
-                                                    
-                            Serializer.SerializeWithLengthPrefix(stream, message, PrefixStyle.Base128);
-                            Console.WriteLine("Sent a {0} event to server...", message.Type.ToString());                          
-                        
-
-                        Console.ReadKey();
-                    }
-                       // BaseEvent incomingEvent = new BaseEvent(); //create to hold incoming event type
-                            
-                                                 
-                       incomingEvent = Serializer.DeserializeWithLengthPrefix<BaseEvent>(stream, PrefixStyle.Base128);   
-                        
+                {
+                    //List<TcpClient> listConnectedClients = new List<TcpClient>(); //List holds connected clients 
                     
-                        switch (incomingEvent.Type)
+                        //Console.WriteLine("Waiting for connection....\n");
+
+                        // newClient = listener.AcceptTcpClient();
+
+                      //  Console.WriteLine("Accepted a connection! \n");
+
+                    //    listConnectedClients.Add(newClient); //Add new client to List of connected clients
+
+                    //BaseEvent incomingEvent = new BaseEvent();
+
+                    if (!(incomingEvent.Type == EventType.NONE))
+                    {
+                        using (var stream = newClient.GetStream())
                         {
-                            case EventType.NONE:
-                                Console.WriteLine("No event yet");
-                                break;
-                            case EventType.SEND_MESSAGE:
-                                SendMessage m = (SendMessage)incomingEvent;
-                                Console.WriteLine("Event was of type: {0}", incomingEvent.Type.ToString());
-                                PrintMessageToClient(m);
-                                break;
-                            default:
-                                break;
-                        }                   
+                            incomingEvent = Serializer.DeserializeWithLengthPrefix<BaseEvent>(stream, PrefixStyle.Base128);
+                        }
+                    }
+
+                    switch (incomingEvent.Type)
+                    {
+                        case EventType.NONE:
+                            Console.WriteLine("No event yet");
+                            break;
+
+                        case EventType.USER_INFO:
+                            UserInfo user = (UserInfo)incomingEvent;
+                            Console.WriteLine("Event was of type: {0}", incomingEvent.Type.ToString());
+                            PrintUserInfo(user);
+                            break;
+
+                        case EventType.SEND_MESSAGE:
+                            Console.WriteLine("Recieved SEND MESSAGE request...");
+                            Console.WriteLine("Event was of type: {0}", incomingEvent.Type.ToString());
+                            SendMessage m = (SendMessage)incomingEvent;
+                            string s;
+                            s = m.Message; //store message from client into string
+                            SendMessage newMessage = new SendMessage
+                            {
+                                Message = s
+                            };
+                            using (var stream = newClient.GetStream())
+                            {
+                                foreach (TcpClient client in listConnectedClients) //send Message to each connected client
+                                {
+                                    
+                                    Serializer.SerializeWithLengthPrefix(stream, newMessage, PrefixStyle.Base128);
+                                }
+                            }
+                            Console.WriteLine("SEND MESSAGE REQUEST HANDLED");
+                            Console.WriteLine("Event was of type: {0}", incomingEvent.Type.ToString());
+                            break;
+
+                        default:
+                            Console.WriteLine("Type was not known.");
+                            break;
+                    }
+
+  
+     
                 }
             }
-            catch (SocketException e)
+            catch (Exception e)
             {
-                Console.WriteLine("Socket exception: {0}", e.ToString());
+                Console.WriteLine(e.ToString());
             }
-            finally
-            {
-                _client?.Close();
-            }
+
         }
 
-
-        static int Main(String[] args)
+        static void Main(string[] args)
         {
-            Client c = new Client { };
+            Server s = new Server { };
 
-            c.StartClient();
-
-            return (0);
+            s.StartServer();
         }
     }
 }
-
